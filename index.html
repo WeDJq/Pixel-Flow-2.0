@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Flow – Клон</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #1a1a2e;
+            color: white;
+            margin-top: 20px;
+        }
+        canvas {
+            border: 3px solid #16213e;
+            border-radius: 16px;
+            background: #0f0f1a;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            cursor: pointer;
+        }
+        .info {
+            margin: 15px;
+            font-size: 20px;
+            letter-spacing: 1px;
+        }
+        button {
+            background: #e94560;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            border-radius: 30px;
+            cursor: pointer;
+            margin: 10px;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button:hover {
+            background: #ff6b81;
+            transform: scale(1.03);
+        }
+        .win-message {
+            font-size: 24px;
+            color: #0f0;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 PIXEL FLOW</h1>
+    <div class="info">Соедини точки одного цвета | Заполни всё поле</div>
+    <canvas id="gameCanvas"></canvas>
+    <div>
+        <button onclick="resetGame()">🔄 Новая игра</button>
+    </div>
+    <div class="win-message" id="winMessage"></div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const size = 5;          // поле 5x5
+        const cellSize = 80;     // размер клетки
+        const dotRadius = 12;    // радиус точки-источника
+
+        canvas.width = size * cellSize;
+        canvas.height = size * cellSize;
+
+        // Цвета для пар (5 пар)
+        const colors = [
+            '#FF6B6B', // красный
+            '#4ECDC4', // бирюзовый
+            '#FFE66D', // жёлтый
+            '#A37EF7', // фиолетовый
+            '#FF8C42'  // оранжевый
+        ];
+
+        // Позиции стартовых и конечных точек (формат [ряд, столбец])
+        // Каждая пара: [r1,c1, r2,c2]
+        const level = [
+            [0,0, 4,4], // красный
+            [0,4, 4,0], // бирюзовый
+            [1,1, 3,3], // жёлтый
+            [1,3, 3,1], // фиолетовый
+            [2,1, 2,3]  // оранжевый
+        ];
+
+        // Игровое поле: -1 = пусто, 0..4 = индекс цвета
+        let grid = Array(size).fill().map(() => Array(size).fill(-1));
+
+        // Текущий выбранный цвет (индекс) и состояние рисования
+        let currentColorIndex = -1;
+        let drawing = false;
+        let startCell = null;   // {r, c}
+
+        // Победное сообщение
+        const winDiv = document.getElementById('winMessage');
+
+        // ====== Инициализация ======
+        function resetGame() {
+            // очищаем поле
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    grid[r][c] = -1;
+                }
+            }
+            // расставляем точки-источники
+            for (let i = 0; i < level.length; i++) {
+                const [r1, c1, r2, c2] = level[i];
+                grid[r1][c1] = i;
+                grid[r2][c2] = i;
+            }
+            currentColorIndex = -1;
+            drawing = false;
+            startCell = null;
+            winDiv.textContent = '';
+            drawAll();
+        }
+
+        // ====== Проверка победы ======
+        function checkWin() {
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    if (grid[r][c] === -1) return false; // есть пустые клетки
+                }
+            }
+            return true;
+        }
+
+        // ====== Рисование всего поля ======
+        function drawAll() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // рисуем сетку
+            ctx.strokeStyle = '#2a2a4a';
+            ctx.lineWidth = 2;
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    const x = c * cellSize;
+                    const y = r * cellSize;
+                    ctx.strokeRect(x, y, cellSize, cellSize);
+                }
+            }
+
+            // рисуем содержимое клеток
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    const x = c * cellSize + cellSize/2;
+                    const y = r * cellSize + cellSize/2;
+                    const cellValue = grid[r][c];
+
+                    if (cellValue !== -1) {
+                        const color = colors[cellValue];
+                        // рисуем квадрат заливки (поток)
+                        ctx.fillStyle = color + '40'; // полупрозрачный
+                        ctx.fillRect(c * cellSize + 4, r * cellSize + 4, cellSize - 8, cellSize - 8);
+                        
+                        // рисуем точку (кружок), если это источник
+                        const isSource = level[cellValue] && (
+                            (level[cellValue][0] === r && level[cellValue][1] === c) ||
+                            (level[cellValue][2] === r && level[cellValue][3] === c)
+                        );
+                        if (isSource) {
+                            ctx.beginPath();
+                            ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+                            ctx.fillStyle = color;
+                            ctx.fill();
+                            ctx.strokeStyle = 'white';
+                            ctx.lineWidth = 2.5;
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+        }
+
+        // ====== Поиск пути (BFS) между двумя клетками одного цвета ======
+        function findPath(startR, startC, endR, endC, colorIdx) {
+            // BFS только по пустым клеткам или целевой конечной точке
+            const queue = [[startR, startC]];
+            const visited = Array(size).fill().map(() => Array(size).fill(false));
+            const parent = Array(size).fill().map(() => Array(size).fill(null));
+            visited[startR][startC] = true;
+
+            const directions = [[1,0],[-1,0],[0,1],[0,-1]];
+
+            while (queue.length > 0) {
+                const [r, c] = queue.shift();
+                if (r === endR && c === endC) {
+                    // восстанавливаем путь
+                    const path = [];
+                    let cur = [r, c];
+                    while (cur[0] !== startR || cur[1] !== startC) {
+                        path.push(cur);
+                        cur = parent[cur[0]][cur[1]];
+                    }
+                    path.push([startR, startC]);
+                    return path.reverse();
+                }
+
+                for (const [dr, dc] of directions) {
+                    const nr = r + dr;
+                    const nc = c + dc;
+                    if (nr >= 0 && nr < size && nc >= 0 && nc < size && !visited[nr][nc]) {
+                        // можно идти если клетка пустая ИЛИ это конечная точка
+                        if (grid[nr][nc] === -1 || (nr === endR && nc === endC)) {
+                            visited[nr][nc] = true;
+                            parent[nr][nc] = [r, c];
+                            queue.push([nr, nc]);
+                        }
+                    }
+                }
+            }
+            return null; // пути нет
+        }
+
+        // ====== Обработка кликов ======
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const col = Math.floor(mouseX / cellSize);
+            const row = Math.floor(mouseY / cellSize);
+            if (row < 0 || row >= size || col < 0 || col >= size) return;
+
+            const cellValue = grid[row][col];
+
+            // Если кликнули по точке-источнику (цвет 0..4)
+            if (cellValue >= 0 && cellValue < colors.length) {
+                const pair = level[cellValue];
+                const isStart1 = (pair[0] === row && pair[1] === col);
+                const isStart2 = (pair[2] === row && pair[3] === col);
+                
+                if (isStart1 || isStart2) {
+                    // Начинаем рисование этого цвета
+                    // Сначала удаляем старый путь этого цвета (кроме источников)
+                    for (let r = 0; r < size; r++) {
+                        for (let c = 0; c < size; c++) {
+                            if (grid[r][c] === cellValue) {
+                                const isSource = (pair[0] === r && pair[1] === c) || (pair[2] === r && pair[3] === c);
+                                if (!isSource) {
+                                    grid[r][c] = -1;
+                                }
+                            }
+                        }
+                    }
+                    currentColorIndex = cellValue;
+                    drawing = true;
+                    // Определяем стартовую точку (противоположную той, на которую кликнули, чтобы тянуть ОТ НЕЁ)
+                    if (isStart1) {
+                        startCell = { r: pair[2], c: pair[3] }; // начинаем из второй точки
+                    } else {
+                        startCell = { r: pair[0], c: pair[1] }; // начинаем из первой точки
+                    }
+                    drawAll();
+                    winDiv.textContent = '';
+                    return;
+                }
+            }
+
+            // Если мы в режиме рисования и кликнули по пустой клетке
+            if (drawing && currentColorIndex !== -1 && startCell && grid[row][col] === -1) {
+                const pair = level[currentColorIndex];
+                const endR = (startCell.r === pair[0] && startCell.c === pair[1]) ? pair[2] : pair[0];
+                const endC = (startCell.r === pair[0] && startCell.c === pair[1]) ? pair[3] : pair[1];
+
+                // Ищем путь от startCell до (row, col) временно? Нет, надо чтобы путь завершился именно в конечной точке.
+                // Поэтому пользователь должен кликнуть сначала на пустую клетку рядом с источником, а закончить на втором источнике.
+                // Упростим: разрешим рисовать только если кликнули прямо по второй точке.
+            }
+
+            // Если кликнули по второй точке того же цвета – завершаем путь
+            if (drawing && currentColorIndex !== -1 && startCell) {
+                const pair = level[currentColorIndex];
+                const targetR = (startCell.r === pair[0] && startCell.c === pair[1]) ? pair[2] : pair[0];
+                const targetC = (startCell.r === pair[0] && startCell.c === pair[1]) ? pair[3] : pair[1];
+
+                if (row === targetR && col === targetC) {
+                    // Попробовать построить путь
+                    const path = findPath(startCell.r, startCell.c, targetR, targetC, currentColorIndex);
+                    if (path) {
+                        // Заполняем путь
+                        for (const [r, c] of path) {
+                            if (grid[r][c] === -1) {
+                                grid[r][c] = currentColorIndex;
+                            }
+                        }
+                        // Проверка победы
+                        if (checkWin()) {
+                            winDiv.textContent = '✅ УРОВЕНЬ ПРОЙДЕН!';
+                        }
+                    }
+                    // Сброс режима рисования
+                    drawing = false;
+                    currentColorIndex = -1;
+                    startCell = null;
+                    drawAll();
+                    return;
+                }
+            }
+
+            // Клик по пустой клетке без активного рисования – просто сброс
+            if (!drawing && grid[row][col] === -1) {
+                // ничего
+            }
+            
+            drawAll();
+        });
+
+        // Запуск
+        resetGame();
+    </script>
+</body>
+</html>
